@@ -14,7 +14,7 @@ start(_StartType, _StartArgs) ->
     case os:getenv("OLLAMA_API_URL") of
         undefined -> 
             %% Default URL if the ENV var is not set
-            ApiUrl = "https://api.ollama.com";
+            ApiUrl = "http://localhost:11434";
         Url -> 
             ApiUrl = Url
     end,
