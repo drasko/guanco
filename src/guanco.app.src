@@ -7,9 +7,10 @@
    [kernel,
     stdlib
    ]},
-  {env,[]},
+  {env, [{ollama, [{host, "localhost"}, {port, 11434}]}]},
   {modules, []},
 
   {licenses, ["Apache 2.0"]},
   {links, []}
  ]}.
+

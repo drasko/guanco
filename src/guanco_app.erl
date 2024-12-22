@@ -10,13 +10,22 @@
 -export([start/2, stop/1]).
 
 start(_StartType, _StartArgs) ->
-    %% Read the environment variable for the base URL and store it in ETS
-    case os:getenv("OLLAMA_API_URL") of
-        undefined -> 
-            %% Default URL if the ENV var is not set
-            ApiUrl = "http://localhost:11434";
-        Url -> 
-            ApiUrl = Url
+    %% Start Hackney if not already started
+    case application:ensure_all_started(hackney) of
+        {ok, _} -> ok;
+        {error, _} -> 
+            {ok, _} = application:start(hackney)
+    end,
+
+    %% Read the host and port from the Erlang application environment using proplists
+    case application:get_env(guanco, ollama) of
+        {ok, OllamaConfig} ->
+            Host = proplists:get_value(host, OllamaConfig, "localhost"),
+            Port = proplists:get_value(port, OllamaConfig, 11434),
+            ApiUrl = lists:concat([Host, ":", integer_to_list(Port)]);
+        _ ->
+            %% Default URL if the configuration is not found
+            ApiUrl = "http://localhost:11434"
     end,
 
     %% Initialize ETS table to store the base URL
