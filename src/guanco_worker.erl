@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, generate_chat_completion/3, show_model_info/1, generate_embeddings/2]).
+-export([start_link/0, generate_completion/3, generate_chat_completion/3, show_model_info/1, generate_embeddings/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3]).
@@ -11,7 +11,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%% Initialize state (read from ETS)
+%% Initialize state
 init([]) ->
     %% Retrieve the base URL from ETS
     case ets:lookup(ollama_api_url, url) of
@@ -21,88 +21,119 @@ init([]) ->
             {stop, {error, missing_url_in_ets}}
     end.
 
-%% Generate Chat Completion function
-generate_chat_completion(ModelName, Messages, Options) ->
-    %% Endpoint and method for chat completion
-    Endpoint = "/api/chat/completion",
-    Method = post,
-
-    %% Prepare the request body
-    Body = prepare_chat_completion_body(ModelName, Messages, Options),
-
-    %% Call the Ollama API
-    call_ollama_api(Endpoint, Method, [], Body).
-
-%% Prepare the body for the Chat Completion request
-prepare_chat_completion_body(ModelName, Messages, Options) ->
+%% Generate a completion
+-spec generate_completion(atom(), binary(), map()) -> any().
+generate_completion(ModelName, Prompt, OptParams) ->
+    %% Define defaults for optional parameters
+    DefaultOptions = #{
+        suffix => <<"">>,
+        images => [],
+        format => <<"json">>,
+        options => #{},
+        system => <<"default_system">>,
+        template => <<"default_template">>,
+        stream => false,
+        raw => false,
+        keep_alive => false,
+        context => <<"">>
+    },
+    %% Merge provided options with defaults
+    Options = maps:merge(DefaultOptions, OptParams),
     Body = #{ 
         model => ModelName,
-        messages => Messages,
-        options => Options
+        prompt => Prompt,
+        suffix => maps:get(suffix, Options),
+        images => maps:get(images, Options),
+        format => maps:get(format, Options),
+        options => maps:get(options, Options),
+        system => maps:get(system, Options),
+        template => maps:get(template, Options),
+        stream => maps:get(stream, Options),
+        raw => maps:get(raw, Options),
+        keep_alive => maps:get(keep_alive, Options),
+        context => maps:get(context, Options)
     },
-    %% Encode the body to JSON
-    jiffy:encode(Body).
+    BodyEncoded = jiffy:encode(Body),
+    call_ollama_api("/api/generate", post, [], BodyEncoded).
 
-%% Show Model Information
+%% Generate chat completion
+-spec generate_chat_completion(atom(), list(), map()) -> any().
+generate_chat_completion(ModelName, Messages, OptParams) ->
+    %% Define defaults for optional parameters
+    DefaultOptions = #{
+        options => #{},
+        system => <<"default_system">>,
+        template => <<"default_template">>,
+        stream => false,
+        context => <<"">>
+    },
+
+    %% Merge provided options with defaults
+    Options = maps:merge(DefaultOptions, OptParams),
+
+    %% Extract the `options` map and other parameters from merged options
+    OptionsMap = maps:get(options, Options),
+    SystemMessage = maps:get(system, Options),
+    Template = maps:get(template, Options),
+    Stream = maps:get(stream, Options),
+    Context = maps:get(context, Options),
+
+    %% Build the request body
+    Body = #{
+        model => ModelName,
+        messages => Messages,
+        options => OptionsMap,  %% Use options directly from the merged map
+        system => SystemMessage,
+        template => Template,
+        stream => Stream,
+        context => Context
+    },
+
+    %% Encode the body to JSON format
+    BodyEncoded = jiffy:encode(Body),
+
+    %% Call the Ollama API
+    call_ollama_api("/api/chat", post, [], BodyEncoded).
+
+%% Show model information
+-spec show_model_info(atom()) -> any().
 show_model_info(ModelName) ->
-    %% Endpoint for model info
-    Endpoint = "/api/show",
-    Method = post,
+    Body = jiffy:encode(#{model => ModelName}),
+    call_ollama_api("/api/show", post, [], Body).
 
-    %% Create the JSON body for the request
-    Body = jiffy:encode(#{model => list_to_binary(ModelName)}),
-
-    %% Call the Ollama API
-    call_ollama_api(Endpoint, Method, [], Body). %% POST request with body
-
-%% Generate Embeddings
+%% Generate embeddings
+-spec generate_embeddings(atom(), binary()) -> any().
 generate_embeddings(ModelName, InputText) ->
-    %% Endpoint and method for generating embeddings
-    Endpoint = "/api/embeddings",
-    Method = post,
-
-    %% Prepare the request body
-    Body = prepare_embeddings_body(ModelName, InputText),
-
-    %% Call the Ollama API
-    call_ollama_api(Endpoint, Method, [], Body).
-
-%% Prepare the body for the Embedding request
-prepare_embeddings_body(ModelName, InputText) ->
     Body = #{
         model => ModelName,
         input => InputText
     },
-    %% Encode the body to JSON
-    jiffy:encode(Body).
+    BodyEncoded = jiffy:encode(Body),
+    call_ollama_api("/api/embed", post, [], BodyEncoded).
 
-%% Common function to call Ollama API
+%% Call Ollama API
+-spec call_ollama_api(binary(), atom(), list(), binary()) -> any().
 call_ollama_api(Endpoint, Method, Headers, Body) ->
-    %% Get the base URL from the worker state
     State = gen_server:call(?MODULE, {get_state}),
     BaseUrl = maps:get(url, State),
-
-    %% Build full URL
     URL = BaseUrl ++ Endpoint,
 
-    %% Make the HTTP request using hackney
     io:format("Making HTTP request to URL: ~p with method: ~p~n", [URL, Method]),
     case hackney:request(Method, URL, Headers, Body, []) of
         {ok, Status, _RespHeaders, ClientRef} when Status >= 200, Status < 300 ->
             io:format("Request successful with Status: ~p~n", [Status]),
             {ok, Response} = hackney:body(ClientRef),
-            io:format("Received response body: ~p~n", [Response]),
             parse_api_response(Response);
         {ok, Status, _RespHeaders, _ClientRef} ->
-            io:format("Request failed with Status: ~p~n", [URL]),
+            io:format("Request failed with Status: ~p~n", [Status]),
             {error, {http_error, Status}};
         {error, Reason} ->
             io:format("Request failed with error: ~p~n", [Reason]),
             {error, Reason}
     end.
 
-
-%% Generic response parser (can be reused for all APIs)
+%% Parse API response
+-spec parse_api_response(binary()) -> any().
 parse_api_response(Response) ->
     try
         ParsedResponse = jiffy:decode(Response, [return_maps]),
@@ -112,19 +143,20 @@ parse_api_response(Response) ->
             {error, {invalid_json, Response}}
     end.
 
-
-%% Get the worker state (including the base URL)
+%% Handle gen_server calls
 handle_call({get_state}, _From, State) ->
     {reply, State, State};
 handle_call(_, _From, State) ->
     {noreply, State}.
 
-%% Handle other gen_server callbacks
+%% Handle gen_server casts
 handle_cast(_, State) ->
     {noreply, State}.
 
+%% Handle termination
 terminate(_, _) ->
     ok.
 
+%% Handle code changes
 code_change(_, State, _) ->
     {ok, State}.
