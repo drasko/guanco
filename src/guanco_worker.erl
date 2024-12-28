@@ -177,33 +177,23 @@ handle_streaming_response(ClientRef) ->
             io:format("Received chunk: ~p~n", [Chunk]),
 
             %% Decode the chunk into a map
-            case jiffy:decode(Chunk, [return_maps]) of
-                {ok, Map} ->
-                    %% Log successful decoding of JSON chunk
-                    io:format("Successfully decoded chunk to Map: ~p~n", [Map]),
+            Decoded = jiffy:decode(Chunk, [return_maps]),
 
-                    %% Extract the "done" field, defaulting to false
-                    Done = maps:get(<<"done">>, Map, false),
-                    io:format("Done: ~p~n", [Done]),
+            %% Log the result of decoding
+            io:format("Decoded result: ~p~n", [Decoded]),
 
-                    %% Process the "done" field and handle the response
-                    case Done of
-                        true ->
-                            %% If "done" is true, the response is finished
-                            io:format("Streaming completed (done = true)~n"),
-                            ok;  %% Handle completion here (e.g., final processing)
-                        false ->
-                            %% If "done" is false, continue streaming
-                            io:format("Received chunk (done = false): ~p~n", [Map]),
-                            io:format("Continuing to stream...~n"),
-                            handle_streaming_response(ClientRef)  %% Recursive call to continue streaming
-                    end;
-
-                {error, Reason} ->
-                    %% Failed to decode chunk as JSON
-                    io:format("Failed to parse chunk: ~p~n", [Chunk]),
-                    io:format("Error decoding chunk: ~p~n", [Reason]),
-                    {error, invalid_json}
+            %% Now proceed based on the result of decoding
+            %% Check if the "done" field exists and whether it's true or false
+            case maps:get(<<"done">>, Decoded, false) of
+                true ->
+                    %% If "done" is true, the response is finished
+                    io:format("Streaming completed (done = true)~n"),
+                    {ok, finished};  %% Handle completion here (e.g., final processing)
+                false ->
+                    %% If "done" is false, continue streaming
+                    io:format("Received chunk (done = false): ~p~n", [Decoded]),
+                    io:format("Continuing to stream...~n"),
+                    handle_streaming_response(ClientRef)  %% Recursive call to continue streaming
             end;
         {error, Reason} ->
             %% Handle any errors that occur during streaming

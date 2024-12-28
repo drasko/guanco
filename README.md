@@ -117,11 +117,11 @@ guanco_worker:generate_chat_completion("model_name", Messages, OptParams).
 ```erlang
 Messages = [
     #{role => <<"system">>, content => <<"You are a helpful assistant.">>},
-    #{role => <<"user">>, content => <<"What's the weather like today?">>}
+    #{role => <<"user">>, content => <<"Why is the sky blue?">>}
 ].
 
 OptParams = #{
-    stream => false,
+    stream => true,
     options => #{<<"temperature">> => 0.7, <<"seed">> => 42}
 }.
 
