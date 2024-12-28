@@ -81,7 +81,6 @@ guanco_worker:generate_completion("model_name", Prompt, OptParams).
 ```erlang
 Prompt = <<"Write a short story about a curious cat exploring a garden.">>.
 OptParams = #{
-    suffix => <<" The adventure begins.">>,
     system => <<"You're an imaginative storyteller.">>,
     stream => true
 }.
