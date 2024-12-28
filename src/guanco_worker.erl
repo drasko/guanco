@@ -13,11 +13,14 @@ start_link() ->
 
 %% Initialize state
 init([]) ->
-    case ets:lookup(ollama_api_url, url) of
-        [{url, BaseUrl}] ->   %% Use "BaseUrl" as before
-            {ok, #{base_url => BaseUrl}};  %% Store the BaseUrl in the state
-        [] ->
-            {stop, {error, missing_url_in_ets}}
+    io:format("Initializing guanco_worker...~n"),
+    case application:get_env(guanco, ollama_api_url) of
+        {ok, BaseUrl} ->   %% Use "BaseUrl" from sys.config
+            io:format("Base URL found: ~p~n", [BaseUrl]),
+            {ok, #{base_url => BaseUrl}};
+        undefined ->
+            io:format("Base URL not found in config~n"),
+            {stop, {error, missing_url_in_config}}
     end.
 
 %% Generate a completion
@@ -101,7 +104,7 @@ handle_call({generate_embeddings, ModelName, InputText}, _From, State) ->
     {reply, Result, State}; %% Return the full state
 
 handle_call({get_state}, _From, State) ->
-    {reply, State, State}; %% Return the full state
+    {reply, {ok, State}, State}; %% Return the full state
 
 handle_call(_, _From, State) ->
     {reply, {error, unknown_request}, State}. %% Return the full state
