@@ -22,11 +22,11 @@ init([]) ->
 
 %% Generate a completion
 generate_completion(ModelName, Prompt, OptParams) ->
-    gen_server:call(?MODULE, {generate_completion, ModelName, Prompt, OptParams}).
+    gen_server:call(?MODULE, {generate_completion, ModelName, Prompt, OptParams}, 30000).
 
 %% Generate chat completion
 generate_chat_completion(ModelName, Messages, OptParams) ->
-    gen_server:call(?MODULE, {generate_chat_completion, ModelName, Messages, OptParams}).
+    gen_server:call(?MODULE, {generate_chat_completion, ModelName, Messages, OptParams}, 30000).
 
 %% Show model information
 show_model_info(ModelName) ->
@@ -112,48 +112,76 @@ handle_cast(_, State) ->
 
 %% Call Ollama API
 call_ollama_api(Url, Method, Headers, Body, Stream) ->
-    logger:info("Making HTTP request to URL: ~p with method: ~p", [Url, Method]),
+    %% Log the method, URL, and request body
+    io:format("Making HTTP request to URL: ~p with method: ~p~n", [Url, Method]),
+    io:format("Request headers: ~p~n", [Headers]),
+    io:format("Request body: ~p~n", [Body]),
+    
     Options = [
-        {connect_timeout, 5000},
-        {recv_timeout, 30000}
+        {connect_timeout, 5000}, %% Connection timeout in milliseconds
+        {recv_timeout, 30000}    %% Receive timeout in milliseconds
     ],
+    %% Make the HTTP request
     case hackney:request(Method, Url, Headers, Body, Options) of
-        {ok, Status, _RespHeaders, ClientRef} when Status >= 200, Status < 300 ->
+        {ok, Status, RespHeaders, ClientRef} when Status >= 200, Status < 300 ->
+            io:format("HTTP request succeeded with status: ~p~n", [Status]),
+            io:format("Response headers: ~p~n", [RespHeaders]),
             if
-                Stream -> handle_streaming_response(ClientRef);
+                Stream ->
+                    io:format("Streaming response enabled. Handling stream...~n"),
+                    handle_streaming_response(ClientRef);
                 true ->
+                    io:format("Non-streaming response. Reading body...~n"),
                     {ok, Response} = hackney:body(ClientRef),
-                    try jiffy:decode(Response, [return_maps]) of
-                        ParsedResponse -> {ok, ParsedResponse}
+                    io:format("Response body received: ~p~n", [Response]),
+                    try
+                        jiffy:decode(Response, [return_maps])
+                    of
+                        ParsedResponse ->
+                            io:format("Decoded JSON response: ~p~n", [ParsedResponse]),
+                            {ok, ParsedResponse}
                     catch
-                        _:_ -> {error, {invalid_json, Response}}
+                        _:_ ->
+                            io:format("Failed to decode JSON response.~n"),
+                            {error, {invalid_json, Response}}
                     end
             end;
         {ok, Status, _RespHeaders, _ClientRef} ->
-            logger:error("HTTP request failed with status: ~p", [Status]),
+            io:format("HTTP request failed with status: ~p~n", [Status]),
             {error, {http_error, Status}};
         {error, Reason} ->
-            logger:error("HTTP request failed with error: ~p", [Reason]),
+            io:format("HTTP request failed with error: ~p~n", [Reason]),
             {error, Reason}
     end.
 
-%% Handle streaming response
+
+%%% Handle streaming response
 handle_streaming_response(ClientRef) ->
+    io:format("Initiating streaming response handling...~n"),
     case hackney:stream_body(ClientRef) of
         {ok, Chunk} ->
-            Decoded = jiffy:decode(Chunk, [return_maps]),
-            case maps:get(<<"done">>, Decoded, false) of
-                true ->
-                    logger:info("Streaming completed."),
-                    {ok, finished};
-                false ->
-                    logger:info("Streaming chunk received: ~p", [Decoded]),
-                    handle_streaming_response(ClientRef)
+            io:format("Streaming chunk received: ~p~n", [Chunk]),
+            try
+                Decoded = jiffy:decode(Chunk, [return_maps]),
+                io:format("Decoded streaming chunk: ~p~n", [Decoded]),
+                case maps:get(<<"done">>, Decoded, false) of
+                    true ->
+                        io:format("Streaming completed.~n"),
+                        {ok, finished};
+                    false ->
+                        io:format("Streaming chunk processed. Awaiting next chunk...~n"),
+                        handle_streaming_response(ClientRef)
+                end
+            catch
+                _:_ ->
+                    io:format("Failed to decode streaming chunk: ~p~n", [Chunk]),
+                    {error, {invalid_chunk, Chunk}}
             end;
         {error, Reason} ->
-            logger:error("Streaming failed with error: ~p", [Reason]),
+            io:format("Streaming failed with error: ~p~n", [Reason]),
             {error, Reason}
     end.
+
 
 %% Handle termination
 terminate(_, _) ->

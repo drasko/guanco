@@ -70,7 +70,10 @@ Parameters:
 
 ```erlang
 Prompt = <<"Tell me a story about space exploration.">>.
-OptParams = #{stream => true}.
+OptParams = #{
+    system => <<"Make it very short - 2-3 phrases.">>,
+    stream => false
+}.
 
 {ok, Response} = guanco_worker:generate_completion(mistral, Prompt, OptParams).
 io:format("Response: ~p~n", [Response]).
@@ -92,11 +95,11 @@ Parameters:
 
 ```erlang
 Messages = [
-    #{role => <<"system">>, content => <<"You're an AI assistant.">>},
+    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short anwers, not more than 2-3 phrases.">>},
     #{role => <<"user">>, content => <<"What is quantum computing?">>}
 ].
 
-OptParams = #{stream => true}.
+OptParams = #{stream => false}.
 
 {ok, Response} = guanco_worker:generate_chat_completion(mistral, Messages, OptParams).
 io:format("Chat: ~p~n", [Response]).
