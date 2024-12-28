@@ -127,24 +127,15 @@ call_ollama_api(Url, Method, Headers, Body, Stream) ->
             io:format("HTTP request succeeded with status: ~p~n", [Status]),
             io:format("Response headers: ~p~n", [RespHeaders]),
             if
-                Stream ->
-                    io:format("Streaming response enabled. Handling stream...~n"),
-                    handle_streaming_response(ClientRef);
+                is_pid(Stream) ->
+                    io:format("Streaming response enabled. Sending chunks to PID: ~p~n", [Stream]),
+                    handle_streaming_response(ClientRef, Stream);
+                Stream == true ->
+                    io:format("Lazy streaming response enabled.~n"),
+                    {ok, fun() -> lazy_stream(ClientRef) end};
                 true ->
                     io:format("Non-streaming response. Reading body...~n"),
-                    {ok, Response} = hackney:body(ClientRef),
-                    io:format("Response body received: ~p~n", [Response]),
-                    try
-                        jiffy:decode(Response, [return_maps])
-                    of
-                        ParsedResponse ->
-                            io:format("Decoded JSON response: ~p~n", [ParsedResponse]),
-                            {ok, ParsedResponse}
-                    catch
-                        _:_ ->
-                            io:format("Failed to decode JSON response.~n"),
-                            {error, {invalid_json, Response}}
-                    end
+                    handle_non_streaming_response(ClientRef)
             end;
         {ok, Status, _RespHeaders, _ClientRef} ->
             io:format("HTTP request failed with status: ~p~n", [Status]),
@@ -154,9 +145,8 @@ call_ollama_api(Url, Method, Headers, Body, Stream) ->
             {error, Reason}
     end.
 
-
 %%% Handle streaming response
-handle_streaming_response(ClientRef) ->
+handle_streaming_response(ClientRef, StreamPid) ->
     io:format("Initiating streaming response handling...~n"),
     case hackney:stream_body(ClientRef) of
         {ok, Chunk} ->
@@ -167,21 +157,60 @@ handle_streaming_response(ClientRef) ->
                 case maps:get(<<"done">>, Decoded, false) of
                     true ->
                         io:format("Streaming completed.~n"),
+                        StreamPid ! {stream_finished, Decoded},
                         {ok, finished};
                     false ->
-                        io:format("Streaming chunk processed. Awaiting next chunk...~n"),
-                        handle_streaming_response(ClientRef)
+                        io:format("Streaming chunk processed. Sending to PID: ~p~n", [StreamPid]),
+                        StreamPid ! {stream_chunk, Decoded},
+                        handle_streaming_response(ClientRef, StreamPid)
                 end
             catch
                 _:_ ->
                     io:format("Failed to decode streaming chunk: ~p~n", [Chunk]),
+                    StreamPid ! {stream_error, {invalid_chunk, Chunk}},
                     {error, {invalid_chunk, Chunk}}
             end;
         {error, Reason} ->
             io:format("Streaming failed with error: ~p~n", [Reason]),
+            StreamPid ! {stream_error, Reason},
             {error, Reason}
     end.
 
+%%% Handle non-streaming response
+handle_non_streaming_response(ClientRef) ->
+    {ok, Response} = hackney:body(ClientRef),
+    io:format("Response body received: ~p~n", [Response]),
+    try
+        jiffy:decode(Response, [return_maps])
+    of
+        ParsedResponse ->
+            io:format("Decoded JSON response: ~p~n", [ParsedResponse]),
+            {ok, ParsedResponse}
+    catch
+        _:_ ->
+            io:format("Failed to decode JSON response.~n"),
+            {error, {invalid_json, Response}}
+    end.
+
+%%% Lazy stream generator
+lazy_stream(ClientRef) ->
+    case hackney:stream_body(ClientRef) of
+        {ok, Chunk} ->
+            try
+                Decoded = jiffy:decode(Chunk, [return_maps]),
+                case maps:get(<<"done">>, Decoded, false) of
+                    true ->
+                        {done, Decoded};
+                    false ->
+                        {cont, Decoded, fun() -> lazy_stream(ClientRef) end}
+                end
+            catch
+                _:_ ->
+                    {error, {invalid_chunk, Chunk}}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% Handle termination
 terminate(_, _) ->

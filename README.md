@@ -79,6 +79,63 @@ OptParams = #{
 io:format("Response: ~p~n", [Response]).
 ```
 
+#### Streaming Example with PID:
+
+```erlang
+Prompt = <<"Tell me a story about space exploration.">>.
+OptParams = #{
+    system => <<"Make it very short - 2-3 phrases.">>,
+    stream => self()
+}.
+
+guanco_worker:generate_completion(mistral, Prompt, OptParams),
+
+receive
+    {stream_chunk, Chunk} ->
+        io:format("Received chunk: ~p~n", [Chunk]),
+        %% Handle the chunk
+        ok;
+    {stream_finished, FinalResponse} ->
+        io:format("Streaming finished: ~p~n", [FinalResponse]),
+        %% Handle the final response
+        ok;
+    {stream_error, Reason} ->
+        io:format("Streaming error: ~p~n", [Reason]),
+        %% Handle the error
+        ok
+end.
+```
+
+#### Streaming Example with Generator:
+
+```erlang
+Prompt = <<"Tell me a story about space exploration.">>.
+OptParams = #{
+    system => <<"Make it very short - 2-3 phrases.">>,
+    stream => true
+}.
+
+{ok, StreamFun} = guanco_worker:generate_completion(mistral, Prompt, OptParams),
+
+process_stream(StreamFun).
+
+process_stream(StreamFun) ->
+    case StreamFun() of
+        {done, FinalResponse} ->
+            io:format("Streaming finished: ~p~n", [FinalResponse]),
+            %% Handle the final response
+            ok;
+        {cont, Chunk, NextFun} ->
+            io:format("Received chunk: ~p~n", [Chunk]),
+            %% Handle the chunk
+            process_stream(NextFun);
+        {error, Reason} ->
+            io:format("Streaming error: ~p~n", [Reason]),
+            %% Handle the error
+            ok
+    end.
+```
+
 ### Generate Chat Completion 💬
 
 Interact with the API for chat completions:
@@ -95,7 +152,7 @@ Parameters:
 
 ```erlang
 Messages = [
-    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short anwers, not more than 2-3 phrases.">>},
+    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short answers, not more than 2-3 phrases.">>},
     #{role => <<"user">>, content => <<"What is quantum computing?">>}
 ].
 
@@ -103,6 +160,65 @@ OptParams = #{stream => false}.
 
 {ok, Response} = guanco_worker:generate_chat_completion(mistral, Messages, OptParams).
 io:format("Chat: ~p~n", [Response]).
+```
+
+#### Streaming Example with PID:
+
+```erlang
+Messages = [
+    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short answers, not more than 2-3 phrases.">>},
+    #{role => <<"user">>, content => <<"What is quantum computing?">>}
+].
+
+OptParams = #{stream => self()}.
+
+guanco_worker:generate_chat_completion(mistral, Messages, OptParams),
+
+receive
+    {stream_chunk, Chunk} ->
+        io:format("Received chunk: ~p~n", [Chunk]),
+        %% Handle the chunk
+        ok;
+    {stream_finished, FinalResponse} ->
+        io:format("Streaming finished: ~p~n", [FinalResponse]),
+        %% Handle the final response
+        ok;
+    {stream_error, Reason} ->
+        io:format("Streaming error: ~p~n", [Reason]),
+        %% Handle the error
+        ok
+end.
+```
+
+#### Streaming Example with Generator:
+
+```erlang
+Messages = [
+    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short answers, not more than 2-3 phrases.">>},
+    #{role => <<"user">>, content => <<"What is quantum computing?">>}
+].
+
+OptParams = #{stream => true}.
+
+{ok, StreamFun} = guanco_worker:generate_chat_completion(mistral, Messages, OptParams),
+
+process_stream(StreamFun).
+
+process_stream(StreamFun) ->
+    case StreamFun() of
+        {done, FinalResponse} ->
+            io:format("Streaming finished: ~p~n", [FinalResponse]),
+            %% Handle the final response
+            ok;
+        {cont, Chunk, NextFun} ->
+            io:format("Received chunk: ~p~n", [Chunk]),
+            %% Handle the chunk
+            process_stream(NextFun);
+        {error, Reason} ->
+            io:format("Streaming error: ~p~n", [Reason]),
+            %% Handle the error
+            ok
+    end.
 ```
 
 ### Retrieve Model Information ℹ️
