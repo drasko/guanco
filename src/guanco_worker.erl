@@ -13,204 +13,147 @@ start_link() ->
 
 %% Initialize state
 init([]) ->
-    %% Retrieve the base URL from ETS
     case ets:lookup(ollama_api_url, url) of
-        [{url, BaseUrl}] -> 
-            {ok, #{url => BaseUrl}};
-        [] -> 
+        [{url, BaseUrl}] ->   %% Use "BaseUrl" as before
+            {ok, #{base_url => BaseUrl}};  %% Store the BaseUrl in the state
+        [] ->
             {stop, {error, missing_url_in_ets}}
     end.
 
 %% Generate a completion
--spec generate_completion(atom(), binary(), map()) -> any().
 generate_completion(ModelName, Prompt, OptParams) ->
-    %% Initialize the base request body with required parameters
-    BaseBody = #{
-        model => ModelName,
-        prompt => Prompt
-    },
-
-    %% List of optional parameters to check and add if present in OptParams
-    OptionalParams = [suffix, images, format, options, system, template, stream, raw, keep_alive, context],
-
-    %% Check if the stream flag is present in OptParams
-    Stream = case maps:find(stream, OptParams) of
-                {ok, StreamValue} -> StreamValue;  %% Use a different name for this case
-                error -> false
-            end,
-
-    %% Add optional parameters to the base body only if they exist in OptParams
-    BodyWithOptionalParams = lists:foldl(fun(Param, Acc) ->
-        case maps:find(Param, OptParams) of
-            {ok, ParamValue} -> maps:put(Param, ParamValue, Acc);  %% Use a different name for this case
-            error -> Acc  %% Keep body unchanged if param is not found
-        end
-    end, BaseBody, OptionalParams),
-
-
-    %% Log the request body after adding optional parameters
-    io:format("Request Body with Optional Parameters: ~p~n", [BodyWithOptionalParams]),
-
-    %% Encode the body to JSON format
-    BodyEncoded = jiffy:encode(BodyWithOptionalParams),
-
-    %% Log Encoded Body
-    io:format("Encoded Body: ~p~n", [BodyEncoded]),
-
-    %% Call the Ollama API with the stream flag as part of the request
-    call_ollama_api("/api/generate", post, [], BodyEncoded, Stream).
+    gen_server:call(?MODULE, {generate_completion, ModelName, Prompt, OptParams}).
 
 %% Generate chat completion
--spec generate_chat_completion(atom(), list(), map()) -> any().
 generate_chat_completion(ModelName, Messages, OptParams) ->
-    %% Initialize the base request body with required parameters
-    BaseBody = #{
-        model => ModelName,
-        messages => Messages
-    },
-
-    %% List of optional parameters to check and add if present in OptParams
-    OptionalParams = [tools, format, options, stream, keep_alive],
-
-    %% Check if the stream flag is present in OptParams
-    Stream = case maps:find(stream, OptParams) of
-                {ok, StreamValue} -> StreamValue;  %% Use a different name for this case
-                error -> false
-            end,
-
-    %% Add optional parameters to the base body only if they exist in OptParams
-    BodyWithOptionalParams = lists:foldl(fun(Param, Acc) ->
-        case maps:find(Param, OptParams) of
-            {ok, ParamValue} -> maps:put(Param, ParamValue, Acc);  %% Use a different name for this case
-            error -> Acc  %% Keep body unchanged if param is not found
-        end
-    end, BaseBody, OptionalParams),
-
-
-    %% Log the request body after adding optional parameters
-    io:format("Request Body with Optional Parameters: ~p~n", [BodyWithOptionalParams]),
-
-    %% Encode the body to JSON format
-    BodyEncoded = jiffy:encode(BodyWithOptionalParams),
-
-    %% Log Encoded Body
-    io:format("Encoded Body: ~p~n", [BodyEncoded]),
-
-    %% Call the Ollama API with the stream flag as part of the request
-    call_ollama_api("/api/chat", post, [], BodyEncoded, Stream).
+    gen_server:call(?MODULE, {generate_chat_completion, ModelName, Messages, OptParams}).
 
 %% Show model information
--spec show_model_info(atom()) -> any().
 show_model_info(ModelName) ->
-    Body = jiffy:encode(#{model => ModelName}),
-    call_ollama_api("/api/show", post, [], Body, false).
+    gen_server:call(?MODULE, {show_model_info, ModelName}).
 
 %% Generate embeddings
--spec generate_embeddings(atom(), binary()) -> any().
 generate_embeddings(ModelName, InputText) ->
-    Body = #{
-        model => ModelName,
-        input => InputText
-    },
-    BodyEncoded = jiffy:encode(Body),
-    call_ollama_api("/api/embed", post, [], BodyEncoded, false).
-
-%% Call Ollama API
--spec call_ollama_api(binary(), atom(), list(), binary(), boolean()) -> any().
-call_ollama_api(Endpoint, Method, Headers, Body, Stream) ->
-    %% Retrieve the state and base URL
-    State = gen_server:call(?MODULE, {get_state}),
-    BaseUrl = maps:get(url, State),
-    URL = BaseUrl ++ Endpoint,
-
-    io:format("Making HTTP request to URL: ~p with method: ~p~n", [URL, Method]),
-
-    %% Set timeout options
-    Options = [
-        {connect_timeout, 5000}, %% Timeout for connecting to the server (5 seconds)
-        {recv_timeout, 30000}    %% Timeout for receiving a response (30 seconds)
-    ],
-
-    %% Make the request
-    case hackney:request(Method, URL, Headers, Body, Options) of
-        {ok, Status, _RespHeaders, ClientRef} when Status >= 200, Status < 300 ->
-            io:format("Request successful with Status: ~p~n", [Status]),
-            if
-                Stream ->
-                    io:format("Stream flag is true, handling streaming response...~n"),
-                    handle_streaming_response(ClientRef);
-                true ->
-                    io:format("Stream flag is false, processing non-streaming response...~n"),
-                    {ok, Response} = hackney:body(ClientRef),
-                    io:format("Received non-streaming response body: ~p~n", [Response]),
-                    parse_api_response(Response)
-            end;
-        {ok, Status, _RespHeaders, _ClientRef} ->
-            io:format("Request failed with Status: ~p~n", [Status]),
-            {error, {http_error, Status}};
-        {error, Reason} ->
-            io:format("Request failed with error: ~p~n", [Reason]),
-            {error, Reason}
-    end.
-
-
-%% Parse API response
--spec parse_api_response(binary()) -> any().
-parse_api_response(Response) ->
-    try
-        ParsedResponse = jiffy:decode(Response, [return_maps]),
-        {ok, ParsedResponse}
-    catch
-        _:_ -> 
-            {error, {invalid_json, Response}}
-    end.
-
-
-%% Handle streaming response
--spec handle_streaming_response(reference()) -> any().
-handle_streaming_response(ClientRef) ->
-    %% Stream the response body chunk by chunk
-    io:format("Start streaming from client: ~p~n", [ClientRef]),
-    case hackney:stream_body(ClientRef) of
-        {ok, Chunk} ->
-            %% Log received chunk
-            io:format("Received chunk: ~p~n", [Chunk]),
-
-            %% Decode the chunk into a map
-            Decoded = jiffy:decode(Chunk, [return_maps]),
-
-            %% Log the result of decoding
-            io:format("Decoded result: ~p~n", [Decoded]),
-
-            %% Now proceed based on the result of decoding
-            %% Check if the "done" field exists and whether it's true or false
-            case maps:get(<<"done">>, Decoded, false) of
-                true ->
-                    %% If "done" is true, the response is finished
-                    io:format("Streaming completed (done = true)~n"),
-                    {ok, finished};  %% Handle completion here (e.g., final processing)
-                false ->
-                    %% If "done" is false, continue streaming
-                    io:format("Received chunk (done = false): ~p~n", [Decoded]),
-                    io:format("Continuing to stream...~n"),
-                    handle_streaming_response(ClientRef)  %% Recursive call to continue streaming
-            end;
-        {error, Reason} ->
-            %% Handle any errors that occur during streaming
-            io:format("Streaming failed with error: ~p~n", [Reason]),
-            {error, Reason}
-    end.
-
+    gen_server:call(?MODULE, {generate_embeddings, ModelName, InputText}).
 
 %% Handle gen_server calls
+handle_call({generate_completion, ModelName, Prompt, OptParams}, _From, State) ->
+    BaseBody = #{model => ModelName, prompt => Prompt},
+    OptionalParams = [suffix, images, format, options, system, template, stream, raw, keep_alive, context],
+    Stream = maps:get(stream, OptParams, false),
+    BodyWithOptionalParams = lists:foldl(
+        fun(Param, Acc) ->
+            case maps:find(Param, OptParams) of
+                {ok, Value} -> maps:put(Param, Value, Acc);
+                error -> Acc
+            end
+        end,
+        BaseBody,
+        OptionalParams
+    ),
+    BodyEncoded = jiffy:encode(BodyWithOptionalParams),
+    logger:info("Generated completion request: ~p", [BodyWithOptionalParams]),
+    BaseUrl = maps:get(base_url, State),
+    Url = BaseUrl ++ "/api/generate", %% Calculate the full URL
+    Result = call_ollama_api(Url, post, [], BodyEncoded, Stream),
+    {reply, Result, State}; %% Return the full state
+
+handle_call({generate_chat_completion, ModelName, Messages, OptParams}, _From, State) ->
+    BaseBody = #{model => ModelName, messages => Messages},
+    OptionalParams = [tools, format, options, stream, keep_alive],
+    Stream = maps:get(stream, OptParams, false),
+    BodyWithOptionalParams = lists:foldl(
+        fun(Param, Acc) ->
+            case maps:find(Param, OptParams) of
+                {ok, Value} -> maps:put(Param, Value, Acc);
+                error -> Acc
+            end
+        end,
+        BaseBody,
+        OptionalParams
+    ),
+    BodyEncoded = jiffy:encode(BodyWithOptionalParams),
+    logger:info("Generated chat completion request: ~p", [BodyWithOptionalParams]),
+    BaseUrl = maps:get(base_url, State),
+    Url = BaseUrl ++ "/api/chat", %% Calculate the full URL
+    Result = call_ollama_api(Url, post, [], BodyEncoded, Stream),
+    {reply, Result, State}; %% Return the full state
+
+handle_call({show_model_info, ModelName}, _From, State) ->
+    %% Extract BaseUrl from the state
+    BaseUrl = maps:get(base_url, State),
+
+    Body = jiffy:encode(#{model => ModelName}),
+    logger:info("Fetching model info for: ~p", [ModelName]),
+    Url = BaseUrl ++ "/api/show", %% Calculate the full URL
+    Result = call_ollama_api(Url, post, [], Body, false),
+    {reply, Result, State}; %% Return the full state
+
+handle_call({generate_embeddings, ModelName, InputText}, _From, State) ->
+    %% Extract BaseUrl from the state
+    BaseUrl = maps:get(base_url, State),
+
+    Body = #{model => ModelName, input => InputText},
+    BodyEncoded = jiffy:encode(Body),
+    logger:info("Generating embeddings for: ~p", [InputText]),
+    Url = BaseUrl ++ "/api/embed", %% Calculate the full URL
+    Result = call_ollama_api(Url, post, [], BodyEncoded, false),
+    {reply, Result, State}; %% Return the full state
+
 handle_call({get_state}, _From, State) ->
-    {reply, State, State};
+    {reply, State, State}; %% Return the full state
+
 handle_call(_, _From, State) ->
-    {noreply, State}.
+    {reply, {error, unknown_request}, State}. %% Return the full state
 
 %% Handle gen_server casts
 handle_cast(_, State) ->
     {noreply, State}.
+
+%% Call Ollama API
+call_ollama_api(Url, Method, Headers, Body, Stream) ->
+    logger:info("Making HTTP request to URL: ~p with method: ~p", [Url, Method]),
+    Options = [
+        {connect_timeout, 5000},
+        {recv_timeout, 30000}
+    ],
+    case hackney:request(Method, Url, Headers, Body, Options) of
+        {ok, Status, _RespHeaders, ClientRef} when Status >= 200, Status < 300 ->
+            if
+                Stream -> handle_streaming_response(ClientRef);
+                true ->
+                    {ok, Response} = hackney:body(ClientRef),
+                    try jiffy:decode(Response, [return_maps]) of
+                        ParsedResponse -> {ok, ParsedResponse}
+                    catch
+                        _:_ -> {error, {invalid_json, Response}}
+                    end
+            end;
+        {ok, Status, _RespHeaders, _ClientRef} ->
+            logger:error("HTTP request failed with status: ~p", [Status]),
+            {error, {http_error, Status}};
+        {error, Reason} ->
+            logger:error("HTTP request failed with error: ~p", [Reason]),
+            {error, Reason}
+    end.
+
+%% Handle streaming response
+handle_streaming_response(ClientRef) ->
+    case hackney:stream_body(ClientRef) of
+        {ok, Chunk} ->
+            Decoded = jiffy:decode(Chunk, [return_maps]),
+            case maps:get(<<"done">>, Decoded, false) of
+                true ->
+                    logger:info("Streaming completed."),
+                    {ok, finished};
+                false ->
+                    logger:info("Streaming chunk received: ~p", [Decoded]),
+                    handle_streaming_response(ClientRef)
+            end;
+        {error, Reason} ->
+            logger:error("Streaming failed with error: ~p", [Reason]),
+            {error, Reason}
+    end.
 
 %% Handle termination
 terminate(_, _) ->
