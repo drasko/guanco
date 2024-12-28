@@ -122,7 +122,7 @@ Messages = [
 
 OptParams = #{
     stream => false,
-    options => #{"temperature" => 0.7, "seed" => 42}
+    options => #{<<"temperature">> => 0.7, <<"seed">> => 42}
 }.
 
 {ok, Response} = guanco_worker:generate_chat_completion(mistral, Messages, OptParams).
