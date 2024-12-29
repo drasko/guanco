@@ -2,14 +2,14 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, generate_completion/3, generate_chat_completion/3, show_model_info/1, generate_embeddings/2]).
+-export([start_link/0, generate_completion/4, generate_chat_completion/4, show_model_info/2, generate_embeddings/3, call_ollama_api/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3]).
 
 %% Start the gen_server
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link(?MODULE, [], []).
 
 %% Initialize state
 init([]) ->
@@ -24,20 +24,20 @@ init([]) ->
     end.
 
 %% Generate a completion
-generate_completion(ModelName, Prompt, OptParams) ->
-    gen_server:call(?MODULE, {generate_completion, ModelName, Prompt, OptParams}, 30000).
+generate_completion(Pid, ModelName, Prompt, OptParams) ->
+    gen_server:call(Pid, {generate_completion, ModelName, Prompt, OptParams}, 30000).
 
 %% Generate chat completion
-generate_chat_completion(ModelName, Messages, OptParams) ->
-    gen_server:call(?MODULE, {generate_chat_completion, ModelName, Messages, OptParams}, 30000).
+generate_chat_completion(Pid, ModelName, Messages, OptParams) ->
+    gen_server:call(Pid, {generate_chat_completion, ModelName, Messages, OptParams}, 30000).
 
 %% Show model information
-show_model_info(ModelName) ->
-    gen_server:call(?MODULE, {show_model_info, ModelName}).
+show_model_info(Pid, ModelName) ->
+    gen_server:call(Pid, {show_model_info, ModelName}).
 
 %% Generate embeddings
-generate_embeddings(ModelName, InputText) ->
-    gen_server:call(?MODULE, {generate_embeddings, ModelName, InputText}).
+generate_embeddings(Pid, ModelName, InputText) ->
+    gen_server:call(Pid, {generate_embeddings, ModelName, InputText}).
 
 %% Handle gen_server calls
 handle_call({generate_completion, ModelName, Prompt, OptParams}, _From, State) ->
@@ -58,7 +58,7 @@ handle_call({generate_completion, ModelName, Prompt, OptParams}, _From, State) -
     logger:info("Generated completion request: ~p", [BodyWithOptionalParams]),
     BaseUrl = maps:get(base_url, State),
     Url = BaseUrl ++ "/api/generate", %% Calculate the full URL
-    Result = call_ollama_api(Url, post, [], BodyEncoded, Stream),
+    Result = ?MODULE:call_ollama_api(Url, post, [], BodyEncoded, Stream),
     {reply, Result, State}; %% Return the full state
 
 handle_call({generate_chat_completion, ModelName, Messages, OptParams}, _From, State) ->
@@ -79,7 +79,7 @@ handle_call({generate_chat_completion, ModelName, Messages, OptParams}, _From, S
     logger:info("Generated chat completion request: ~p", [BodyWithOptionalParams]),
     BaseUrl = maps:get(base_url, State),
     Url = BaseUrl ++ "/api/chat", %% Calculate the full URL
-    Result = call_ollama_api(Url, post, [], BodyEncoded, Stream),
+    Result = ?MODULE:call_ollama_api(Url, post, [], BodyEncoded, Stream),
     {reply, Result, State}; %% Return the full state
 
 handle_call({show_model_info, ModelName}, _From, State) ->
@@ -89,7 +89,7 @@ handle_call({show_model_info, ModelName}, _From, State) ->
     Body = jiffy:encode(#{model => ModelName}),
     logger:info("Fetching model info for: ~p", [ModelName]),
     Url = BaseUrl ++ "/api/show", %% Calculate the full URL
-    Result = call_ollama_api(Url, post, [], Body, false),
+    Result = ?MODULE:call_ollama_api(Url, post, [], Body, false),
     {reply, Result, State}; %% Return the full state
 
 handle_call({generate_embeddings, ModelName, InputText}, _From, State) ->
@@ -100,7 +100,7 @@ handle_call({generate_embeddings, ModelName, InputText}, _From, State) ->
     BodyEncoded = jiffy:encode(Body),
     logger:info("Generating embeddings for: ~p", [InputText]),
     Url = BaseUrl ++ "/api/embed", %% Calculate the full URL
-    Result = call_ollama_api(Url, post, [], BodyEncoded, false),
+    Result = ?MODULE:call_ollama_api(Url, post, [], BodyEncoded, false),
     {reply, Result, State}; %% Return the full state
 
 handle_call({get_state}, _From, State) ->

@@ -7,8 +7,8 @@ Guanco is an Erlang-based client for interacting with the Ollama API. It simplif
 - **Chat Completion**: Generate AI-powered chat completions using various models.
 - **Model Info**: Fetch information about a specific model.
 - **Embeddings**: Generate embeddings for input text.
-- **Configurable**: Ollama API URL, host, and port can be customized via application environment configuration.
-- **Tool Support**: Enhanced support for tools in chat interactions (e.g., multimodal models or external APIs).
+- **Configurable**: Ollama API URL, host, and port can be customized via `sys.config`.
+- **Streaming Support**: Stream responses directly to a PID or use lazy streaming with generators.
 
 ## Installation 📥
 
@@ -33,223 +33,151 @@ This will fetch the required dependencies, such as `hackney` for HTTP requests a
 
 ### 3. Configure the Ollama API URL
 
-The Ollama API URL can be configured in the `app.src` file under the `env` section. This configuration allows you to set the host and port for the Ollama API.
-
-Update the `guanco.app.src` file in the `src/` directory:
+The Ollama API URL is configured in `sys.config`. Add the following to your `sys.config` file:
 
 ```erlang
-{env, [{ollama, [{host, "localhost"}, {port, 11434}]}]},
+[
+ {guanco, [
+    {ollama_api_url, "http://localhost:11434"}
+ ]}
+].
 ```
 
-### 4. Start the Application
+Ensure the `sys.config` file is in the same directory where you run the Erlang VM or specify its location when starting the VM.
 
-To start the Guanco application, run the following command:
+### 4. Start the Worker
 
-```bash
-erl -sname guanco_app -setcookie yourcookie -s guanco_app
+To start the `guanco_worker`, include it in your application supervision tree or manually start it:
+
+```erlang
+{ok, Pid} = guanco_worker:start_link().
 ```
 
 ## Usage 📋
 
-Guanco provides a simple interface to interact with Ollama's API via the `guanco_worker` module.
+Guanco provides a simple interface to interact with Ollama's API via the `guanco_worker` module. Functions are invoked using the `Pid` of the started worker.
 
-### Generate Completion ✍️
+---
 
-Generate a completion from a specific model:
+### **Generate Completion ✍️**
 
-```erlang
-guanco_worker:generate_completion("model_name", Prompt, OptParams).
-```
-
-Parameters:
-- **model_name**: The name of the model to use (e.g., `mistral`).
-- **Prompt**: The input prompt for the model (binary format).
-- **OptParams**: A map of optional parameters (e.g., suffix, context, streaming options).
-
-#### Example:
+Generate a text completion from a specific model.
 
 ```erlang
+{ok, Pid} = guanco_worker:start_link().
+
 Prompt = <<"Tell me a story about space exploration.">>.
 OptParams = #{
     system => <<"Make it very short - 2-3 phrases.">>,
     stream => false
 }.
 
-{ok, Response} = guanco_worker:generate_completion(mistral, Prompt, OptParams).
+{ok, Response} = guanco_worker:generate_completion(Pid, mistral, Prompt, OptParams).
 io:format("Response: ~p~n", [Response]).
 ```
 
-#### Streaming Example with PID:
+---
+
+### **Streaming Completion ✨**
+
+Stream responses directly to a PID.
 
 ```erlang
+{ok, Pid} = guanco_worker:start_link().
+
 Prompt = <<"Tell me a story about space exploration.">>.
 OptParams = #{
     system => <<"Make it very short - 2-3 phrases.">>,
     stream => self()
 }.
 
-guanco_worker:generate_completion(mistral, Prompt, OptParams),
+ok = guanco_worker:generate_completion(Pid, mistral, Prompt, OptParams),
 
 receive
     {stream_chunk, Chunk} ->
-        io:format("Received chunk: ~p~n", [Chunk]),
-        %% Handle the chunk
-        ok;
+        io:format("Received chunk: ~p~n", [Chunk]);
     {stream_finished, FinalResponse} ->
-        io:format("Streaming finished: ~p~n", [FinalResponse]),
-        %% Handle the final response
-        ok;
+        io:format("Streaming finished: ~p~n", [FinalResponse]);
     {stream_error, Reason} ->
-        io:format("Streaming error: ~p~n", [Reason]),
-        %% Handle the error
-        ok
+        io:format("Streaming error: ~p~n", [Reason])
 end.
 ```
 
-#### Streaming Example with Generator:
+---
+
+### **Generate Chat Completion 💬**
+
+Interact with the API for chat completions.
 
 ```erlang
-Prompt = <<"Tell me a story about space exploration.">>.
-OptParams = #{
-    system => <<"Make it very short - 2-3 phrases.">>,
-    stream => true
-}.
+{ok, Pid} = guanco_worker:start_link().
 
-{ok, StreamFun} = guanco_worker:generate_completion(mistral, Prompt, OptParams),
-
-process_stream(StreamFun).
-
-process_stream(StreamFun) ->
-    case StreamFun() of
-        {done, FinalResponse} ->
-            io:format("Streaming finished: ~p~n", [FinalResponse]),
-            %% Handle the final response
-            ok;
-        {cont, Chunk, NextFun} ->
-            io:format("Received chunk: ~p~n", [Chunk]),
-            %% Handle the chunk
-            process_stream(NextFun);
-        {error, Reason} ->
-            io:format("Streaming error: ~p~n", [Reason]),
-            %% Handle the error
-            ok
-    end.
-```
-
-### Generate Chat Completion 💬
-
-Interact with the API for chat completions:
-
-```erlang
-guanco_worker:generate_chat_completion("model_name", Messages, OptParams).
-```
-
-Parameters:
-- **Messages**: A list of maps representing the chat history (roles, content, and optional tools).
-- **OptParams**: A map of optional parameters, including `tools`, `stream`, and more.
-
-#### Example:
-
-```erlang
 Messages = [
-    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short answers, not more than 2-3 phrases.">>},
+    #{role => <<"system">>, content => <<"You're an AI assistant. Be concise.">>},
     #{role => <<"user">>, content => <<"What is quantum computing?">>}
 ].
 
 OptParams = #{stream => false}.
 
-{ok, Response} = guanco_worker:generate_chat_completion(mistral, Messages, OptParams).
-io:format("Chat: ~p~n", [Response]).
+{ok, Response} = guanco_worker:generate_chat_completion(Pid, mistral, Messages, OptParams).
+io:format("Chat Response: ~p~n", [Response]).
 ```
 
-#### Streaming Example with PID:
+---
+
+### **Streaming Chat Completion 💡**
+
+Stream chat completion responses directly to a PID.
 
 ```erlang
+{ok, Pid} = guanco_worker:start_link().
+
 Messages = [
-    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short answers, not more than 2-3 phrases.">>},
+    #{role => <<"system">>, content => <<"You're an AI assistant. Be concise.">>},
     #{role => <<"user">>, content => <<"What is quantum computing?">>}
 ].
 
 OptParams = #{stream => self()}.
 
-guanco_worker:generate_chat_completion(mistral, Messages, OptParams),
+ok = guanco_worker:generate_chat_completion(Pid, mistral, Messages, OptParams),
 
 receive
     {stream_chunk, Chunk} ->
-        io:format("Received chunk: ~p~n", [Chunk]),
-        %% Handle the chunk
-        ok;
+        io:format("Received chunk: ~p~n", [Chunk]);
     {stream_finished, FinalResponse} ->
-        io:format("Streaming finished: ~p~n", [FinalResponse]),
-        %% Handle the final response
-        ok;
+        io:format("Streaming finished: ~p~n", [FinalResponse]);
     {stream_error, Reason} ->
-        io:format("Streaming error: ~p~n", [Reason]),
-        %% Handle the error
-        ok
+        io:format("Streaming error: ~p~n", [Reason])
 end.
 ```
 
-#### Streaming Example with Generator:
+---
+
+### **Retrieve Model Information ℹ️**
+
+Fetch details about a specific model.
 
 ```erlang
-Messages = [
-    #{role => <<"system">>, content => <<"You're an AI assistant. Give very short answers, not more than 2-3 phrases.">>},
-    #{role => <<"user">>, content => <<"What is quantum computing?">>}
-].
+{ok, Pid} = guanco_worker:start_link().
 
-OptParams = #{stream => true}.
-
-{ok, StreamFun} = guanco_worker:generate_chat_completion(mistral, Messages, OptParams),
-
-process_stream(StreamFun).
-
-process_stream(StreamFun) ->
-    case StreamFun() of
-        {done, FinalResponse} ->
-            io:format("Streaming finished: ~p~n", [FinalResponse]),
-            %% Handle the final response
-            ok;
-        {cont, Chunk, NextFun} ->
-            io:format("Received chunk: ~p~n", [Chunk]),
-            %% Handle the chunk
-            process_stream(NextFun);
-        {error, Reason} ->
-            io:format("Streaming error: ~p~n", [Reason]),
-            %% Handle the error
-            ok
-    end.
-```
-
-### Retrieve Model Information ℹ️
-
-Fetch details about a model:
-
-```erlang
-guanco_worker:show_model_info("model_name").
-```
-
-#### Example:
-
-```erlang
-{ok, Info} = guanco_worker:show_model_info(mistral).
+{ok, Info} = guanco_worker:show_model_info(Pid, mistral).
 io:format("Model Info: ~p~n", [Info]).
 ```
 
-### Generate Embeddings 🧠
+---
 
-Create embeddings for text:
+### **Generate Embeddings 🧠**
 
-```erlang
-guanco_worker:generate_embeddings("model_name", InputText).
-```
-
-#### Example:
+Create embeddings for input text.
 
 ```erlang
-{ok, Embeddings} = guanco_worker:generate_embeddings(mistral, <<"Sample text">>).
+{ok, Pid} = guanco_worker:start_link().
+
+{ok, Embeddings} = guanco_worker:generate_embeddings(Pid, mistral, <<"Sample text">>).
 io:format("Embeddings: ~p~n", [Embeddings]).
 ```
+
+---
 
 ## License 📜
 
