@@ -4,25 +4,50 @@
 
 %% Test initialization with environment variable
 init_with_env_test() ->
+    %% Ensure a clean state
+    application:stop(guanco),
+    application:unset_env(guanco, ollama_api_url),
+
     {ok, _} = application:ensure_all_started(guanco),
-    
+
+    %% Stop and delete the pool
+    supervisor:terminate_child(guanco_sup, guanco_worker_pool),
+    supervisor:delete_child(guanco_sup, guanco_worker_pool),
+
     %% Set the environment variable
     application:set_env(guanco, ollama_api_url, "http://env-url"),
     io:format("Set environment variable: ~p~n", [application:get_env(guanco, ollama_api_url)]),
-    
-    %% Create a new worker with the updated environment variable
-    {ok, Pid} = guanco_worker:start_link([]),
-    
-    Result = gen_server:call(Pid, {get_state}),
+
+    %% Start new workers
+    PoolSize = application:get_env(guanco, pool_size, 5),
+    MaxOverflow = application:get_env(guanco, max_overflow, 10),
+    PoolboyConfig = [
+        {name, {local, guanco_worker_pool}},
+        {worker_module, guanco_worker},
+        {size, PoolSize},
+        {max_overflow, MaxOverflow}
+    ],
+    supervisor:start_child(guanco_sup, poolboy:child_spec(guanco_worker_pool, PoolboyConfig, [])),
+
+    Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
+        gen_server:call(Pid, {get_state})
+    end),
     {ok, State} = Result,
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),
     io:format("Base URL in state: ~p~n", [BaseUrl]),
     ?assertEqual("http://env-url", BaseUrl),
-    application:unset_env(guanco, ollama_api_url).
+
+    %% Cleanup
+    application:unset_env(guanco, ollama_api_url),
+    application:stop(guanco).
 
 %% Test initialization with default value from app.src
 init_with_default_test() ->
+    %% Re-load the configuration file
+    ok = application:unload(guanco),
+    ok = application:load(guanco),
+
     {ok, _} = application:ensure_all_started(guanco),
     Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
         gen_server:call(Pid, {get_state})
