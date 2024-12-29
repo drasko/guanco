@@ -16,26 +16,25 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-%% sup_flags() = #{strategy => strategy(),         % optional
-%%                 intensity => non_neg_integer(), % optional
-%%                 period => pos_integer()}        % optional
-%% child_spec() = #{id => child_id(),       % mandatory
-%%                  start => mfargs(),      % mandatory
-%%                  restart => restart(),   % optional
-%%                  shutdown => shutdown(), % optional
-%%                  type => worker(),       % optional
-%%                  modules => modules()}   % optional
 init([]) ->
+    PoolSize = application:get_env(guanco, pool_size, 5),
+    MaxOverflow = application:get_env(guanco, max_overflow, 10),
+
+    PoolboyConfig = [
+        {name, {local, guanco_worker_pool}},
+        {worker_module, guanco_worker},
+        {size, PoolSize},
+        {max_overflow, MaxOverflow}
+    ],
+
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1},
 
     %% Worker specification
-    ChildSpecs = [#{id => guanco_worker,
-                  start => {guanco_worker, start_link, []},
-                  restart => permanent,
-                  shutdown => 5000,
-                  type => worker}],
+    ChildSpecs = [
+        poolboy:child_spec(guanco_worker_pool, PoolboyConfig, [])
+    ],
     {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

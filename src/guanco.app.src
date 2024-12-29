@@ -5,10 +5,13 @@
   {mod, {guanco_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    poolboy
    ]},
   {env, [
-     {ollama_api_url, "http://localhost:11434"}  % Default value for HTTP
+     {ollama_api_url, "http://localhost:11434"},  % Default value for HTTP
+     {pool_size, 5},  % Default pool size
+     {max_overflow, 10}  % Default max overflow
   ]},
   {modules, []},
 

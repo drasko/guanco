@@ -2,18 +2,21 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, generate_completion/4, generate_chat_completion/4, show_model_info/2, generate_embeddings/3, call_ollama_api/5]).
+-export([start_link/1, generate_completion/4, generate_chat_completion/4, show_model_info/2, generate_embeddings/3, call_ollama_api/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3]).
 
-%% Start the gen_server
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+%% Macros
+-define(GEN_SERVER_TIMEOUT, 30000).
+
+%% Start the gen_server with arguments (required by poolboy)
+start_link(Args) ->
+    gen_server:start_link(?MODULE, Args, []).
 
 %% Initialize state
-init([]) ->
-    io:format("Initializing guanco_worker...~n"),
+init(Args) ->
+    io:format("Initializing guanco_worker with args: ~p...~n", [Args]),
     case application:get_env(guanco, ollama_api_url) of
         {ok, BaseUrl} ->   %% Use "BaseUrl" from sys.config
             io:format("Base URL found: ~p~n", [BaseUrl]),
@@ -25,19 +28,19 @@ init([]) ->
 
 %% Generate a completion
 generate_completion(Pid, ModelName, Prompt, OptParams) ->
-    gen_server:call(Pid, {generate_completion, ModelName, Prompt, OptParams}, 30000).
+    gen_server:call(Pid, {generate_completion, ModelName, Prompt, OptParams}, ?GEN_SERVER_TIMEOUT).
 
 %% Generate chat completion
 generate_chat_completion(Pid, ModelName, Messages, OptParams) ->
-    gen_server:call(Pid, {generate_chat_completion, ModelName, Messages, OptParams}, 30000).
+    gen_server:call(Pid, {generate_chat_completion, ModelName, Messages, OptParams}, ?GEN_SERVER_TIMEOUT).
 
 %% Show model information
 show_model_info(Pid, ModelName) ->
-    gen_server:call(Pid, {show_model_info, ModelName}).
+    gen_server:call(Pid, {show_model_info, ModelName}, ?GEN_SERVER_TIMEOUT).
 
 %% Generate embeddings
 generate_embeddings(Pid, ModelName, InputText) ->
-    gen_server:call(Pid, {generate_embeddings, ModelName, InputText}).
+    gen_server:call(Pid, {generate_embeddings, ModelName, InputText}, ?GEN_SERVER_TIMEOUT).
 
 %% Handle gen_server calls
 handle_call({generate_completion, ModelName, Prompt, OptParams}, _From, State) ->

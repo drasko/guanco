@@ -6,8 +6,11 @@
 init_with_env_test() ->
     application:set_env(guanco, ollama_api_url, "http://env-url"),
     io:format("Set environment variable: ~p~n", [application:get_env(guanco, ollama_api_url)]),
-    {ok, Pid} = guanco_worker:start_link(),
-    {ok, State} = gen_server:call(Pid, {get_state}),
+    {ok, _} = application:ensure_all_started(guanco),
+    Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
+        gen_server:call(Pid, {get_state})
+    end),
+    {ok, State} = Result,
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),
     io:format("Base URL in state: ~p~n", [BaseUrl]),
@@ -18,8 +21,10 @@ init_with_env_test() ->
 init_with_default_test() ->
     application:stop(guanco),
     application:start(guanco),
-    {ok, Pid} = guanco_worker:start_link(),
-    {ok, State} = gen_server:call(Pid, {get_state}),
+    Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
+        gen_server:call(Pid, {get_state})
+    end),
+    {ok, State} = Result,
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),
     io:format("Base URL in state: ~p~n", [BaseUrl]),
@@ -28,40 +33,40 @@ init_with_default_test() ->
 %% Test generate_completion
 generate_completion_test() ->
     meck:new(guanco_worker, [passthrough]),
-    {ok, Pid} = guanco_worker:start_link(),
+    {ok, _} = application:ensure_all_started(guanco),
     MockResponse = #{result => <<"completion">>},
     meck:expect(guanco_worker, call_ollama_api, fun(_, _, _, _, _) -> {ok, MockResponse} end),
-    Result = guanco_worker:generate_completion(Pid, mistral, <<"This is the test">>, #{}),
+    Result = guanco_app:generate_completion(mistral, <<"This is the test">>, #{}),
     ?assertEqual({ok, MockResponse}, Result),
     meck:unload(guanco_worker).
 
 %% Test generate_chat_completion
 generate_chat_completion_test() ->
     meck:new(guanco_worker, [passthrough]),
-    {ok, Pid} = guanco_worker:start_link(),
+    {ok, _} = application:ensure_all_started(guanco),
     MockResponse = #{result => <<"chat_completion">>},
     meck:expect(guanco_worker, call_ollama_api, fun(_, _, _, _, _) -> {ok, MockResponse} end),
     Messages = [#{role => <<"user">>, content => <<"Some text">>}],
-    Result = guanco_worker:generate_chat_completion(Pid, mistral, Messages, #{}),
+    Result = guanco_app:generate_chat_completion(mistral, Messages, #{}),
     ?assertEqual({ok, MockResponse}, Result),
     meck:unload(guanco_worker).
 
 %% Test show_model_info
 show_model_info_test() ->
     meck:new(guanco_worker, [passthrough]),
-    {ok, Pid} = guanco_worker:start_link(),
+    {ok, _} = application:ensure_all_started(guanco),
     MockResponse = #{result => <<"model_info">>},
     meck:expect(guanco_worker, call_ollama_api, fun(_, _, _, _, _) -> {ok, MockResponse} end),
-    Result = guanco_worker:show_model_info(Pid, mistral),
+    Result = guanco_app:show_model_info(mistral),
     ?assertEqual({ok, MockResponse}, Result),
     meck:unload(guanco_worker).
 
 %% Test generate_embeddings
 generate_embeddings_test() ->
     meck:new(guanco_worker, [passthrough]),
-    {ok, Pid} = guanco_worker:start_link(),
+    {ok, _} = application:ensure_all_started(guanco),
     MockResponse = #{result => <<"embeddings">>},
     meck:expect(guanco_worker, call_ollama_api, fun(_, _, _, _, _) -> {ok, MockResponse} end),
-    Result = guanco_worker:generate_embeddings(Pid, mistral, <<"Some text">>),
+    Result = guanco_app:generate_embeddings(mistral, <<"Some text">>),
     ?assertEqual({ok, MockResponse}, Result),
     meck:unload(guanco_worker).
