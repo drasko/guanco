@@ -4,12 +4,16 @@
 
 %% Test initialization with environment variable
 init_with_env_test() ->
+    {ok, _} = application:ensure_all_started(guanco),
+    
+    %% Set the environment variable
     application:set_env(guanco, ollama_api_url, "http://env-url"),
     io:format("Set environment variable: ~p~n", [application:get_env(guanco, ollama_api_url)]),
-    {ok, _} = application:ensure_all_started(guanco),
-    Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
-        gen_server:call(Pid, {get_state})
-    end),
+    
+    %% Create a new worker with the updated environment variable
+    {ok, Pid} = guanco_worker:start_link([]),
+    
+    Result = gen_server:call(Pid, {get_state}),
     {ok, State} = Result,
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),
@@ -19,8 +23,7 @@ init_with_env_test() ->
 
 %% Test initialization with default value from app.src
 init_with_default_test() ->
-    application:stop(guanco),
-    application:start(guanco),
+    {ok, _} = application:ensure_all_started(guanco),
     Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
         gen_server:call(Pid, {get_state})
     end),
