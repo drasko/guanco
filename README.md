@@ -1,6 +1,6 @@
 # Guanco 🦙
 
-Guanco is an Erlang-based client for interacting with the Ollama API. It simplifies the use of Ollama's API by wrapping calls into Erlang worker functions, allowing you to perform tasks such as generating chat completions, retrieving model information, and generating embeddings with minimal setup.
+Guanco is an Erlang client for Ollama that provides various functionalities such as generating completions, chat completions, showing model information, and generating embeddings.
 
 ## Features 🚀
 
@@ -10,26 +10,24 @@ Guanco is an Erlang-based client for interacting with the Ollama API. It simplif
 - **Configurable**: Ollama API URL, host, and port can be customized via `sys.config`.
 - **Streaming Support**: Stream responses directly to a PID or use lazy streaming with generators.
 
-## Installation 📥
+## Installation
 
-Follow these steps to install and set up Guanco:
+To install Guanco, clone the repository and build the project using rebar3:
 
 ### 1. Clone the Repository
 
-```bash
+```sh
 git clone https://github.com/yourusername/guanco.git
 cd guanco
 ```
 
-### 2. Install Dependencies
+### 2. Compile the Project
 
-Ensure you have Erlang installed. Then, use `rebar3` to install the dependencies:
+Use `rebar3` to compile the project and fetch dependencies:
 
-```bash
+```sh
 rebar3 compile
 ```
-
-This will fetch the required dependencies, such as `hackney` for HTTP requests and `jiffy` for JSON handling.
 
 ### 3. Configure the Ollama API URL
 
@@ -38,7 +36,7 @@ The Ollama API URL is configured in `sys.config`. Add the following to your `sys
 ```erlang
 [
  {guanco, [
-    {ollama_api_url, "http://localhost:11434"}
+   {ollama_api_url, "http://localhost:11434"}
  ]}
 ].
 ```
@@ -57,11 +55,9 @@ To start the `guanco_worker`, include it in your application supervision tree or
 
 Guanco provides a simple interface to interact with Ollama's API via the `guanco_worker` module. Functions are invoked using the `Pid` of the started worker.
 
----
+### Generate Completion ✍️
 
-### **Generate Completion ✍️**
-
-Generate a text completion from a specific model.
+#### Normal Completion
 
 ```erlang
 {ok, Pid} = guanco_worker:start_link().
@@ -76,11 +72,7 @@ OptParams = #{
 io:format("Response: ~p~n", [Response]).
 ```
 
----
-
-### **Streaming Completion ✨**
-
-Stream responses directly to a PID.
+#### Streaming Completion
 
 ```erlang
 {ok, Pid} = guanco_worker:start_link().
@@ -103,11 +95,34 @@ receive
 end.
 ```
 
----
+#### Lazy Streaming Completion
 
-### **Generate Chat Completion 💬**
+```erlang
+{ok, Pid} = guanco_worker:start_link().
 
-Interact with the API for chat completions.
+Result = guanco_worker:generate_completion(Pid, mistral, <<"This is the test">>, #{stream => true}),
+case Result of
+    {ok, StreamFun} ->
+        handle_lazy_stream(StreamFun);
+    {error, Reason} ->
+        io:format("Error: ~p~n", [Reason])
+end.
+
+handle_lazy_stream(StreamFun) ->
+    case StreamFun() of
+        {done, FinalChunk} ->
+            io:format("Lazy streaming finished: ~p~n", [FinalChunk]);
+        {cont, Chunk, NextFun} ->
+            io:format("Received lazy chunk: ~p~n", [Chunk]),
+            handle_lazy_stream(NextFun);
+        {error, Reason} ->
+            io:format("Lazy streaming error: ~p~n", [Reason])
+    end.
+```
+
+### Generate Chat Completion 💬
+
+#### Normal Chat Completion
 
 ```erlang
 {ok, Pid} = guanco_worker:start_link().
@@ -123,11 +138,7 @@ OptParams = #{stream => false}.
 io:format("Chat Response: ~p~n", [Response]).
 ```
 
----
-
-### **Streaming Chat Completion 💡**
-
-Stream chat completion responses directly to a PID.
+#### Streaming Chat Completion
 
 ```erlang
 {ok, Pid} = guanco_worker:start_link().
@@ -151,11 +162,37 @@ receive
 end.
 ```
 
----
+#### Lazy Streaming Chat Completion
 
-### **Retrieve Model Information ℹ️**
+```erlang
+{ok, Pid} = guanco_worker:start_link().
 
-Fetch details about a specific model.
+Messages = [
+    #{role => <<"system">>, content => <<"You're an AI assistant. Be concise.">>},
+    #{role => <<"user">>, content => <<"What is quantum computing?">>}
+].
+
+Result = guanco_worker:generate_chat_completion(Pid, mistral, Messages, #{stream => true}),
+case Result of
+    {ok, StreamFun} ->
+        handle_lazy_stream(StreamFun);
+    {error, Reason} ->
+        io:format("Error: ~p~n", [Reason])
+end.
+
+handle_lazy_stream(StreamFun) ->
+    case StreamFun() of
+        {done, FinalChunk} ->
+            io:format("Lazy streaming finished: ~p~n", [FinalChunk]);
+        {cont, Chunk, NextFun} ->
+            io:format("Received lazy chunk: ~p~n", [Chunk]),
+            handle_lazy_stream(NextFun);
+        {error, Reason} ->
+            io:format("Lazy streaming error: ~p~n", [Reason])
+    end.
+```
+
+### Retrieve Model Information ℹ️
 
 ```erlang
 {ok, Pid} = guanco_worker:start_link().
@@ -164,11 +201,7 @@ Fetch details about a specific model.
 io:format("Model Info: ~p~n", [Info]).
 ```
 
----
-
-### **Generate Embeddings 🧠**
-
-Create embeddings for input text.
+### Generate Embeddings 🧠
 
 ```erlang
 {ok, Pid} = guanco_worker:start_link().
@@ -176,8 +209,6 @@ Create embeddings for input text.
 {ok, Embeddings} = guanco_worker:generate_embeddings(Pid, mistral, <<"Sample text">>).
 io:format("Embeddings: ~p~n", [Embeddings]).
 ```
-
----
 
 ## License 📜
 
