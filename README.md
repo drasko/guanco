@@ -10,7 +10,7 @@ Guanco is an Erlang client for Ollama that provides various functionalities such
 - **Model Info**: Fetch information about a specific model.
 - **Embeddings**: Generate embeddings for input text.
 - **Configurable**: Ollama API URL, host, and port can be customized via `sys.config`.
-- **Worker Pooling**: Efficient resource management using `poolboy`.
+- **Worker Pooling**: Efficient resource management using `worker_pool`.
 
 ## Installation 📥
 
@@ -33,7 +33,7 @@ rebar3 compile
 
 ## Configuration ⚙️
 
-The application uses environment variables for configuration, including `ollama_api_url` for the base URL and `poolboy` settings for worker management.
+The application uses environment variables for configuration, including `ollama_api_url` for the base URL and `worker_pool` settings for worker management.
 
 Example `sys.config`:
 

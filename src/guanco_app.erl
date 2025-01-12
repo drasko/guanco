@@ -22,24 +22,16 @@ stop(_State) ->
 
 %% Generate a completion
 generate_completion(ModelName, Prompt, OptParams) ->
-    poolboy:transaction(guanco_worker_pool, fun(Worker) ->
-        guanco_worker:generate_completion(Worker, ModelName, Prompt, OptParams)
-    end).
+    wpool:call(guanco_worker_pool, {generate_completion, ModelName, Prompt, OptParams}).
 
 %% Generate chat completion
 generate_chat_completion(ModelName, Messages, OptParams) ->
-    poolboy:transaction(guanco_worker_pool, fun(Worker) ->
-        guanco_worker:generate_chat_completion(Worker, ModelName, Messages, OptParams)
-    end).
+    wpool:call(guanco_worker_pool, {generate_chat_completion, ModelName, Messages, OptParams}).
 
 %% Show model information
 show_model_info(ModelName) ->
-    poolboy:transaction(guanco_worker_pool, fun(Worker) ->
-        guanco_worker:show_model_info(Worker, ModelName)
-    end).
+    wpool:call(guanco_worker_pool, {show_model_info, ModelName}).
 
 %% Generate embeddings
 generate_embeddings(ModelName, InputText) ->
-    poolboy:transaction(guanco_worker_pool, fun(Worker) ->
-        guanco_worker:generate_embeddings(Worker, ModelName, InputText)
-    end).
+    wpool:call(guanco_worker_pool, {generate_embeddings, ModelName, InputText}).

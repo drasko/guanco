@@ -10,7 +10,7 @@
 %% Macros
 -define(GEN_SERVER_TIMEOUT, 30000).
 
-%% Start the gen_server with arguments (required by poolboy)
+%% Start the gen_server with arguments
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 

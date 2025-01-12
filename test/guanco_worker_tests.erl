@@ -21,17 +21,15 @@ init_with_env_test() ->
     %% Start new workers
     PoolSize = application:get_env(guanco, pool_size, 5),
     MaxOverflow = application:get_env(guanco, max_overflow, 10),
-    PoolboyConfig = [
-        {name, {local, guanco_worker_pool}},
+    WorkerPoolConfig = [
+        {name, guanco_worker_pool},
         {worker_module, guanco_worker},
         {size, PoolSize},
         {max_overflow, MaxOverflow}
     ],
-    supervisor:start_child(guanco_sup, poolboy:child_spec(guanco_worker_pool, PoolboyConfig, [])),
+    supervisor:start_child(guanco_sup, wpool:child_spec(guanco_worker_pool, WorkerPoolConfig)),
 
-    Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
-        gen_server:call(Pid, {get_state})
-    end),
+    Result = wpool:call(guanco_worker_pool, {get_state}),
     {ok, State} = Result,
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),
@@ -49,9 +47,7 @@ init_with_default_test() ->
     ok = application:load(guanco),
 
     {ok, _} = application:ensure_all_started(guanco),
-    Result = poolboy:transaction(guanco_worker_pool, fun(Pid) ->
-        gen_server:call(Pid, {get_state})
-    end),
+    Result = wpool:call(guanco_worker_pool, {get_state}),
     {ok, State} = Result,
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),

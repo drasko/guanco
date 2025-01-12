@@ -6,7 +6,7 @@
   {applications,
    [kernel,
     stdlib,
-    poolboy
+    worker_pool
    ]},
   {env, [
      {ollama_api_url, "http://localhost:11434"},  % Default value for HTTP

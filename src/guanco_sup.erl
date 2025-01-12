@@ -20,8 +20,8 @@ init([]) ->
     PoolSize = application:get_env(guanco, pool_size, 5),
     MaxOverflow = application:get_env(guanco, max_overflow, 10),
 
-    PoolboyConfig = [
-        {name, {local, guanco_worker_pool}},
+    WorkerPoolConfig = [
+        {name, guanco_worker_pool},
         {worker_module, guanco_worker},
         {size, PoolSize},
         {max_overflow, MaxOverflow}
@@ -33,7 +33,7 @@ init([]) ->
 
     %% Worker specification
     ChildSpecs = [
-        poolboy:child_spec(guanco_worker_pool, PoolboyConfig, [])
+        wpool:child_spec(guanco_worker_pool, WorkerPoolConfig)
     ],
     {ok, {SupFlags, ChildSpecs}}.
 
