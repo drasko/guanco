@@ -57,7 +57,7 @@ handle_call({generate_completion, ModelName, Prompt, OptParams}, _From, State) -
         BaseBody,
         OptionalParams
     ),
-    BodyEncoded = jiffy:encode(BodyWithOptionalParams),
+    BodyEncoded = json:encode(BodyWithOptionalParams),
     logger:info("Generated completion request: ~p", [BodyWithOptionalParams]),
     BaseUrl = maps:get(base_url, State),
     Url = BaseUrl ++ "/api/generate", %% Calculate the full URL
@@ -78,7 +78,7 @@ handle_call({generate_chat_completion, ModelName, Messages, OptParams}, _From, S
         BaseBody,
         OptionalParams
     ),
-    BodyEncoded = jiffy:encode(BodyWithOptionalParams),
+    BodyEncoded = json:encode(BodyWithOptionalParams),
     logger:info("Generated chat completion request: ~p", [BodyWithOptionalParams]),
     BaseUrl = maps:get(base_url, State),
     Url = BaseUrl ++ "/api/chat", %% Calculate the full URL
@@ -89,7 +89,7 @@ handle_call({show_model_info, ModelName}, _From, State) ->
     %% Extract BaseUrl from the state
     BaseUrl = maps:get(base_url, State),
 
-    Body = jiffy:encode(#{model => ModelName}),
+    Body = json:encode(#{model => ModelName}),
     logger:info("Fetching model info for: ~p", [ModelName]),
     Url = BaseUrl ++ "/api/show", %% Calculate the full URL
     Result = ?MODULE:call_ollama_api(Url, post, [], Body, false),
@@ -100,7 +100,7 @@ handle_call({generate_embeddings, ModelName, InputText}, _From, State) ->
     BaseUrl = maps:get(base_url, State),
 
     Body = #{model => ModelName, input => InputText},
-    BodyEncoded = jiffy:encode(Body),
+    BodyEncoded = json:encode(Body),
     logger:info("Generating embeddings for: ~p", [InputText]),
     Url = BaseUrl ++ "/api/embed", %% Calculate the full URL
     Result = ?MODULE:call_ollama_api(Url, post, [], BodyEncoded, false),
@@ -158,7 +158,7 @@ handle_streaming_response(ClientRef, StreamPid) ->
         {ok, Chunk} ->
             io:format("Streaming chunk received: ~p~n", [Chunk]),
             try
-                Decoded = jiffy:decode(Chunk, [return_maps]),
+                Decoded = json:decode(Chunk),
                 io:format("Decoded streaming chunk: ~p~n", [Decoded]),
                 case maps:get(<<"done">>, Decoded, false) of
                     true ->
@@ -187,7 +187,7 @@ handle_non_streaming_response(ClientRef) ->
     {ok, Response} = hackney:body(ClientRef),
     io:format("Response body received: ~p~n", [Response]),
     try
-        jiffy:decode(Response, [return_maps])
+        json:decode(Response)
     of
         ParsedResponse ->
             io:format("Decoded JSON response: ~p~n", [ParsedResponse]),
@@ -203,7 +203,7 @@ lazy_stream(ClientRef) ->
     case hackney:stream_body(ClientRef) of
         {ok, Chunk} ->
             try
-                Decoded = jiffy:decode(Chunk, [return_maps]),
+                Decoded = json:decode(Chunk),
                 case maps:get(<<"done">>, Decoded, false) of
                     true ->
                         {done, Decoded};
