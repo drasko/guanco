@@ -1,5 +1,7 @@
 # Guanco 🦙
 
+![Erlang CI](https://github.com/drasko/guanco/actions/workflows/ci.yml/badge.svg)
+
 Guanco is an Erlang client for Ollama that provides various functionalities such as generating completions, chat completions, showing model information, and generating embeddings.
 
 ## Features 🚀

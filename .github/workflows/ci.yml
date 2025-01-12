@@ -1,0 +1,41 @@
+name: Erlang CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Erlang/OTP
+      - name: Set up Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27.0' # Specify the required Erlang/OTP version
+          rebar3-version: '3.24.0' # Specify the required rebar3 version
+
+      # Install dependencies
+      - name: Install dependencies
+        run: rebar3 get-deps
+
+      # Compile the project
+      - name: Compile project
+        run: rebar3 compile
+
+      # Run tests
+      - name: Run tests
+        run: rebar3 eunit
+
+      # Optional: Run dialyzer for static analysis
+      - name: Run dialyzer
+        run: rebar3 dialyzer
