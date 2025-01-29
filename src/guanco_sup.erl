@@ -18,13 +18,10 @@ start_link() ->
 
 init([]) ->
     PoolSize = application:get_env(guanco, pool_size, 5),
-    MaxOverflow = application:get_env(guanco, max_overflow, 10),
 
     WorkerPoolConfig = [
-        {name, guanco_worker_pool},
-        {worker_module, guanco_worker},
-        {size, PoolSize},
-        {max_overflow, MaxOverflow}
+        {worker, {guanco_worker, []}},
+        {workers, PoolSize} %% Correct option for setting worker count
     ],
 
     SupFlags = #{strategy => one_for_all,

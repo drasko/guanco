@@ -15,7 +15,7 @@ init_with_env_test() ->
     supervisor:delete_child(guanco_sup, guanco_worker_pool),
 
     %% Set the environment variable
-    application:set_env(guanco, ollama_api_url, "http://env-url"),
+    application:set_env(guanco, ollama_api_url, "http://localhost:11434"),
     io:format("Set environment variable: ~p~n", [application:get_env(guanco, ollama_api_url)]),
 
     %% Start new workers
@@ -34,7 +34,7 @@ init_with_env_test() ->
     io:format("State received: ~p~n", [State]),
     BaseUrl = maps:get(base_url, State),
     io:format("Base URL in state: ~p~n", [BaseUrl]),
-    ?assertEqual("http://env-url", BaseUrl),
+    ?assertEqual("http://localhost:11434", BaseUrl),
 
     %% Cleanup
     application:unset_env(guanco, ollama_api_url),
